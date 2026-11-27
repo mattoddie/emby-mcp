@@ -1,0 +1,19 @@
+{
+  "name": "emby-mcp-website",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync-docs": "node scripts/sync-docs.mjs",
+    "dev": "npm run sync-docs && astro dev",
+    "build": "npm run sync-docs && astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.42.10",
+    "astro": "^7.4.10",
+    "sharp": "^0.35.5"
+  },
+  "overrides": {
+    "postcss-selector-parser": "^7.1.6"
+  }
+}

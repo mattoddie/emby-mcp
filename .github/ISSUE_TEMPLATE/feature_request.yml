@@ -1,0 +1,23 @@
+name: ✨ Feature request
+description: Suggest a new tool or improvement.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like to do?
+      description: Describe what you'd like to ask your assistant to do, or what's missing today.
+      placeholder: e.g. "I'd like to set a film's artwork from the chat, not just refresh it."
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: New tool(s), arguments or behaviour. If you know the Emby API request for this (from your server's /emby/openapi.json, or what the Emby web app sends, with private details removed), include it. It's often most of the work.
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contributing
+      options:
+        - label: I'd be willing to open a pull request for this

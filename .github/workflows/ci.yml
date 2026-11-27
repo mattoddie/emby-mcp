@@ -1,0 +1,149 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Lint
+        run: make lint
+      - name: Test
+        run: go test -race ./...
+        env:
+          CGO_ENABLED: "1"
+      - name: Check docs/tools.md, the bundle manifest and server.json are up to date
+        run: make docs-check
+      - name: Validate server.json with mcp-publisher
+        env:
+          # Keep in step with the release workflow's registry job.
+          MCP_PUBLISHER_VERSION: v1.8.1
+          MCP_PUBLISHER_SHA256: a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/mcp-publisher.tar.gz" \
+            "https://github.com/modelcontextprotocol/registry/releases/download/$MCP_PUBLISHER_VERSION/mcp-publisher_linux_amd64.tar.gz"
+          echo "$MCP_PUBLISHER_SHA256  $RUNNER_TEMP/mcp-publisher.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/mcp-publisher.tar.gz" -C "$RUNNER_TEMP" mcp-publisher
+          "$RUNNER_TEMP/mcp-publisher" validate server.json
+      - name: Check for known vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
+  mcpb:
+    name: MCP Bundles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Build
+        run: make mcpb VERSION=0.0.0-ci
+
+      - name: Validate the manifests
+        run: |
+          for f in dist/*.mcpb; do
+            dir=".build/unpacked/$(basename "$f" .mcpb)"
+            mkdir -p "$dir"
+            unzip -q "$f" -d "$dir"
+            npx -y @anthropic-ai/mcpb@2.1.2 validate "$dir/manifest.json"
+          done
+
+      - name: Smoke test (linux/amd64, over stdio)
+        working-directory: .build/unpacked/emby-mcp-0.0.0-ci-linux-amd64
+        # Set every variable the way Claude Desktop does when the optional settings are left empty.
+        env:
+          MCP_TRANSPORT: stdio
+          EMBY_URL: http://192.0.2.10:8096
+          EMBY_API_KEY: ci-api-key-0123456789
+          EMBY_USER: '${user_config.user}' # an unfilled setting, passed through literally
+          EMBY_ALLOW_WRITES: "false"
+          EMBY_ALLOW_DELETES: "false"
+          EMBY_TOOLSETS: ""
+          EMBY_TLS_FINGERPRINT: '${user_config.tls_fingerprint}'
+          EMBY_AUDIT_LOG: '${user_config.audit_log}'
+        run: |
+          test "$(./server/emby-mcp version)" = 0.0.0-ci
+          {
+            echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}'
+            echo '{"jsonrpc":"2.0","method":"notifications/initialized"}'
+            echo '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+            sleep 2
+          } | ./server/emby-mcp > out.jsonl
+          jq -c '{id, server: .result.serverInfo, tools: (.result.tools | length?)}' out.jsonl
+          tools=$(jq -s 'map(select(.id == 2))[0].result.tools | length' out.jsonl)
+          test "$tools" -eq "$(jq '.tools | length' manifest.json)"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mcpb
+          path: dist/*.mcpb
+          retention-days: 7
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build (linux/amd64)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          load: true
+          tags: emby-mcp:ci
+          build-args: VERSION=0.0.0-ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test
+        run: |
+          docker run -d --name smoke -p 8080:8080 -e MCP_AUTH_TOKEN=ci-smoke-test-token-0123456789 \
+            -e EMBY_URL=http://192.0.2.10:8096 -e EMBY_API_KEY=ci-api-key-0123456789 emby-mcp:ci
+          for i in $(seq 1 30); do curl -fsS http://localhost:8080/health && break; sleep 1; done
+          echo
+          tools=$(curl -fsS -X POST http://localhost:8080/mcp \
+            -H 'Authorization: Bearer ci-smoke-test-token-0123456789' -H 'Content-Type: application/json' \
+            -H 'Accept: application/json, text/event-stream' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | jq '.result.tools | length')
+          echo "Tools registered: $tools"
+          test "$tools" -gt 0
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8080/mcp -d '{}')
+          test "$code" = 401
+          sleep 6
+          test "$(docker inspect --format '{{.State.Health.Status}}' smoke)" = healthy
+          # The MCP Registry checks this label to confirm the image belongs to the server.
+          test "$(docker inspect --format '{{index .Config.Labels "io.modelcontextprotocol.server.name"}}' emby-mcp:ci)" = "$(jq -r .name server.json)"
+          docker logs smoke
+          docker rm -f smoke
+
+      - name: Build all platforms
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          build-args: VERSION=0.0.0-ci
+          cache-from: type=gha

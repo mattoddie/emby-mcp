@@ -1,0 +1,46 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Instrument+Sans:wght@500;600&family=IBM+Plex+Mono:wght@500&display=block">
+<style>
+*{margin:0;box-sizing:border-box}
+body{width:1200px;height:630px;background:#f4ecdd;color:#1d1714;font-family:'Instrument Sans',sans-serif;overflow:hidden;position:relative}
+.paper{position:absolute;inset:0;background:radial-gradient(60% 80% at 100% 0%,rgba(142,31,48,.14),transparent 60%),radial-gradient(50% 70% at 0% 100%,rgba(212,154,42,.18),transparent 60%)}
+.strip{position:absolute;left:0;right:0;height:46px;background:#1d1714;display:flex;gap:18px;align-items:center;padding:0 14px}
+.strip i{display:block;width:26px;height:18px;border-radius:4px;background:#f4ecdd;flex:none}
+.top{top:0}.bot{bottom:0}
+.c{position:absolute;inset:46px 0;padding:0 88px;display:flex;flex-direction:column;justify-content:center}
+.row{display:flex;align-items:center;gap:22px}
+.name{font:600 46px 'Fraunces';letter-spacing:-.01em}
+.kicker{font:500 20px 'IBM Plex Mono';letter-spacing:.18em;text-transform:uppercase;color:#8e1f30;margin-top:34px}
+h1{font:800 92px/0.98 'Fraunces';letter-spacing:-.035em;margin-top:14px;max-width:960px}
+h1 em{font-style:italic;color:#8e1f30}
+p{font-size:28px;color:#4a3f37;margin-top:24px}
+</style></head><body><div class="paper"></div>
+<div class="strip top"></div><div class="strip bot"></div>
+<div class="c"><div class="row"><svg width="120" height="120" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="emby-mcp logo">
+  <!-- A cinema ticket: burgundy card, notched sides, a perforated stub and a gold star. -->
+  <defs>
+    <linearGradient id="em-card" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9B2335"/>
+      <stop offset="1" stop-color="#5E1220"/>
+    </linearGradient>
+    <linearGradient id="em-star" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F6D27A"/>
+      <stop offset="1" stop-color="#D49A2A"/>
+    </linearGradient>
+  </defs>
+  <g transform="rotate(-8 64 64)">
+    <path d="M18 30 H110 A6 6 0 0 1 116 36 V54 A10 10 0 0 0 116 74 V92 A6 6 0 0 1 110 98 H18 A6 6 0 0 1 12 92 V74 A10 10 0 0 0 12 54 V36 A6 6 0 0 1 18 30 Z" fill="url(#em-card)"/>
+    <path d="M22 38 H106 V90 H22 Z" fill="none" stroke="#F6E7C8" stroke-opacity="0.35" stroke-width="2"/>
+    <line x1="88" y1="34" x2="88" y2="94" stroke="#F6E7C8" stroke-width="3" stroke-dasharray="3 5" stroke-linecap="round"/>
+    <path d="M52 44 L57.6 56.2 L70.8 57.6 L60.9 66.6 L63.7 79.6 L52 72.9 L40.3 79.6 L43.1 66.6 L33.2 57.6 L46.4 56.2 Z" fill="url(#em-star)"/>
+    <circle cx="101" cy="52" r="3" fill="#F6D27A"/>
+    <circle cx="101" cy="64" r="3" fill="#F6D27A"/>
+    <circle cx="101" cy="76" r="3" fill="#F6D27A"/>
+  </g>
+</svg>
+<div class="name">emby-mcp</div></div>
+<div class="kicker">An MCP server for Emby</div>
+<h1>Your film library, <em>finally in order.</em></h1>
+<p>Search, tag, collect and tidy it from Claude. Open source, read-only by default.</p></div>
+<script>for(const s of document.querySelectorAll('.strip')){s.innerHTML='<i></i>'.repeat(42)}</script>
+</body></html>

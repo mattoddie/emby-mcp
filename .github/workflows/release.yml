@@ -1,0 +1,376 @@
+# Pushing a version tag (vX.Y.Z) creates a draft GitHub release, builds the
+# Docker image for amd64 and arm64 and pushes it to ghcr.io/<owner>/emby-mcp,
+# builds the MCP Bundles for Claude Desktop and plain binaries for each OS and
+# architecture, and attaches them to the draft with a SHA256SUMS file,
+# then publishes the release. Releases are immutable once published, so
+# everything is attached first. For stable releases it then publishes
+# server.json to the official MCP Registry. See docs/releasing.md.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ github.ref_name }}
+
+jobs:
+  prepare:
+    name: Create the draft release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # create the draft release
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      stable: ${{ steps.version.outputs.stable }}
+      draft: ${{ steps.release.outputs.draft }}
+    steps:
+      - name: Validate tag
+        id: version
+        run: |
+          if [[ ! "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Release tags must be semantic versions like v1.2.3 or v1.2.3-rc.1 (got '$TAG')."
+            exit 1
+          fi
+          version="${TAG#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # Stable releases get the moving tags (X.Y, X, latest); pre-releases only their exact version.
+          if [[ "$version" == *-* ]]; then
+            echo "stable=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "stable=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check the tag is on main
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$TAG points to $GITHUB_SHA, which isn't on main. Tag a commit on main."
+            exit 1
+          fi
+
+      - name: Create the draft release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STABLE: ${{ steps.version.outputs.stable }}
+        run: |
+          # A re-run finds the release this workflow already created.
+          draft=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+            --jq ".[] | select(.tag_name == \"$TAG\") | .draft")
+          if [[ -z "$draft" ]]; then
+            prerelease=()
+            [[ "$STABLE" == "true" ]] || prerelease=(--prerelease)
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
+              --title "$TAG" --generate-notes "${prerelease[@]}"
+            draft=true
+          fi
+          echo "draft=$draft" >> "$GITHUB_OUTPUT"
+          if [[ "$draft" != "true" ]]; then
+            echo "::notice::$TAG is already published, so its assets can't change. Rebuilding the image only."
+          fi
+
+  image:
+    name: Build and push image
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # append image details to the release notes
+      packages: write # push to ghcr.io
+      id-token: write # sign the build provenance attestation
+      attestations: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}
+    steps:
+      - name: Version
+        id: version
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          STABLE: ${{ needs.prepare.outputs.stable }}
+        run: |
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "stable=$STABLE" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=${{ steps.version.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.TAG }},enable=${{ steps.version.outputs.stable }}
+            type=semver,pattern={{major}},value=${{ env.TAG }},enable=${{ steps.version.outputs.stable == 'true' && !startsWith(env.TAG, 'v0.') }}
+            type=raw,value=latest,enable=${{ steps.version.outputs.stable }}
+          labels: |
+            org.opencontainers.image.title=emby-mcp
+            org.opencontainers.image.description=MCP server for Emby media servers
+            org.opencontainers.image.licenses=MIT
+          annotations: |
+            org.opencontainers.image.title=emby-mcp
+            org.opencontainers.image.description=MCP server for Emby media servers
+            org.opencontainers.image.licenses=MIT
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          build-args: VERSION=${{ steps.version.outputs.version }}
+          # No build cache: release images are built from scratch so nothing cached
+          # by another workflow run can end up in a published image.
+          no-cache: true
+          provenance: mode=max
+          sbom: true
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Add image details to the release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body > notes.md
+          # Re-running the workflow must not add the section twice.
+          if grep -q '^## Container image' notes.md; then
+            exit 0
+          fi
+          {
+            echo
+            echo "## Container image"
+            echo
+            echo '```sh'
+            echo "docker pull $IMAGE:$VERSION"
+            echo '```'
+            echo
+            echo "Platforms: \`linux/amd64\`, \`linux/arm64\` · Digest: \`$DIGEST\`"
+            echo
+            echo "Tags: $(echo "$TAGS" | sed 's/.*:/`/; s/$/`/' | paste -sd ' ' | sed 's/ /, /g')"
+          } >> notes.md
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file notes.md
+
+      - name: Summary
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          {
+            echo "### Published \`$IMAGE:$VERSION\`"
+            echo
+            echo "$TAGS" | sed 's/^/- `/; s/$/`/'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  mcpb:
+    name: Build and upload MCP Bundles and binaries
+    # After the image: the tests run inside its build.
+    needs: [prepare, image]
+    # A published release is immutable, so a re-run can't replace its bundles.
+    if: needs.prepare.outputs.draft == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # upload release assets and append to the release notes
+      id-token: write # sign the build provenance attestation
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          # No build cache, for the same reason as the image.
+          cache: false
+
+      - name: Build
+        run: make dist VERSION="${TAG#v}"
+
+      - name: Check the binary
+        run: |
+          tar -xzf "dist/emby-mcp-${TAG#v}-linux-amd64.tar.gz" -C "$RUNNER_TEMP" emby-mcp
+          test "$("$RUNNER_TEMP/emby-mcp" version)" = "${TAG#v}"
+          (cd dist && sha256sum -c SHA256SUMS)
+
+      - name: Validate the manifests
+        run: |
+          for f in dist/*.mcpb; do
+            dir=".build/unpacked/$(basename "$f" .mcpb)"
+            mkdir -p "$dir"
+            unzip -q "$f" -d "$dir"
+            npx -y @anthropic-ai/mcpb@2.1.2 validate "$dir/manifest.json"
+            test "$(jq -r .version "$dir/manifest.json")" = "${TAG#v}"
+          done
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/*.mcpb
+            dist/*.tar.gz
+            dist/*.zip
+
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${TAG#v}"
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" dist/*.mcpb dist/*.tar.gz dist/*.zip dist/SHA256SUMS --clobber
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body > notes.md
+          # Re-running the workflow must not add the section twice.
+          if grep -q '^## Claude Desktop' notes.md; then
+            exit 0
+          fi
+          {
+            echo
+            echo "## Claude Desktop"
+            echo
+            echo "Download the bundle for your computer and open it to install emby-mcp as a Claude Desktop extension. See [Claude Desktop](https://emby-mcp.mattoddie.dev/docs/clients/#claude-desktop) for the settings."
+            echo
+            echo "| Computer | Bundle |"
+            echo "|---|---|"
+            echo "| Mac with Apple silicon | \`emby-mcp-$version-darwin-arm64.mcpb\` |"
+            echo "| Mac with an Intel processor | \`emby-mcp-$version-darwin-amd64.mcpb\` |"
+            echo "| Windows on x64 | \`emby-mcp-$version-windows-amd64.mcpb\` |"
+            echo "| Windows on Arm | \`emby-mcp-$version-windows-arm64.mcpb\` |"
+            echo "| Linux | \`emby-mcp-$version-linux-amd64.mcpb\`, \`emby-mcp-$version-linux-arm64.mcpb\` |"
+            echo
+            echo "## Binaries"
+            echo
+            echo "To run emby-mcp without Docker, download the archive for your platform. Each one holds the \`emby-mcp\` binary and the licence. See [Running without Docker](https://emby-mcp.mattoddie.dev/docs/deployment/#running-without-docker)."
+            echo
+            echo "| Platform | Archive |"
+            echo "|---|---|"
+            echo "| macOS | \`emby-mcp-$version-darwin-arm64.tar.gz\`, \`emby-mcp-$version-darwin-amd64.tar.gz\` |"
+            echo "| Linux | \`emby-mcp-$version-linux-amd64.tar.gz\`, \`emby-mcp-$version-linux-arm64.tar.gz\` |"
+            echo "| Windows | \`emby-mcp-$version-windows-amd64.zip\`, \`emby-mcp-$version-windows-arm64.zip\` |"
+            echo
+            echo "Check a download with \`sha256sum -c SHA256SUMS --ignore-missing\` or \`gh release verify-asset $TAG <file> -R $GITHUB_REPOSITORY\`."
+          } >> notes.md
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file notes.md
+
+  publish:
+    name: Publish the release
+    needs: [prepare, image, mcpb]
+    if: needs.prepare.outputs.draft == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # publish the draft release
+    steps:
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+
+  registry:
+    name: Publish to the MCP Registry
+    # After the release is published: the registry checks the image's
+    # io.modelcontextprotocol.server.name label, and server.json lists the
+    # bundles with their SHA-256s. Pre-releases aren't published.
+    needs: [prepare, image, publish]
+    # On a re-run of an already published release, publish is skipped and this still runs.
+    if: >-
+      ${{ !cancelled() && needs.prepare.outputs.stable == 'true' && needs.image.result == 'success' &&
+      (needs.publish.result == 'success' || (needs.publish.result == 'skipped' && needs.prepare.outputs.draft != 'true')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read # download the bundles from the release
+      id-token: write # log in to the registry with GitHub OIDC
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      # Pinned: bump both together from the release's checksums file,
+      # https://github.com/modelcontextprotocol/registry/releases
+      MCP_PUBLISHER_VERSION: v1.8.1
+      MCP_PUBLISHER_SHA256: a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install mcp-publisher
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/mcp-publisher.tar.gz" \
+            "https://github.com/modelcontextprotocol/registry/releases/download/$MCP_PUBLISHER_VERSION/mcp-publisher_linux_amd64.tar.gz"
+          echo "$MCP_PUBLISHER_SHA256  $RUNNER_TEMP/mcp-publisher.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/mcp-publisher.tar.gz" -C "$RUNNER_TEMP" mcp-publisher
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: Stamp the version, image and bundles into server.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern '*.mcpb' --dir "$RUNNER_TEMP/bundles"
+          (cd "$RUNNER_TEMP/bundles" && sha256sum -- *.mcpb) > "$RUNNER_TEMP/sha256sums"
+          jq --arg v "$VERSION" --rawfile sums "$RUNNER_TEMP/sha256sums" '
+            ($sums | split("\n") | map(select(. != "") | split("  ") | {key: .[1], value: .[0]}) | from_entries) as $sha
+            | .repository.url as $repo
+            | .version = $v
+            | .packages |= map(
+                if .registryType == "oci" then
+                  .identifier |= sub(":[^:/]+$"; ":" + $v)
+                elif .registryType == "mcpb" then
+                  (.identifier | capture("-(?<p>[a-z]+-[a-z0-9]+)\\.mcpb$").p) as $p
+                  | "emby-mcp-\($v)-\($p).mcpb" as $f
+                  | .identifier = "\($repo)/releases/download/v\($v)/\($f)"
+                  | .fileSha256 = ($sha[$f] // error("\($f) is not attached to the release"))
+                else . end)
+            | if ([.packages[] | select(.registryType == "mcpb")] | length) != ($sha | length)
+              then error("the release has \($sha | length) bundles, but server.json lists a different number") else . end
+          ' server.json > "$RUNNER_TEMP/server.json"
+          mv "$RUNNER_TEMP/server.json" server.json
+          cat server.json
+          mcp-publisher validate server.json
+
+      - name: Publish
+        run: |
+          # The registry refuses to publish a version twice, so a re-run after
+          # a successful publish has nothing to do.
+          code=$(curl -s -o /dev/null -w '%{http_code}' \
+            "https://registry.modelcontextprotocol.io/v0/servers/$(jq -r '.name | @uri' server.json)/versions/$VERSION")
+          if [ "$code" = 200 ]; then
+            echo "Version $VERSION is already in the MCP Registry."
+            exit 0
+          fi
+          mcp-publisher login github-oidc
+          mcp-publisher publish server.json
+          {
+            echo "### Published to the MCP Registry"
+            echo
+            echo "\`$(jq -r .name server.json)\` version \`$VERSION\`"
+          } >> "$GITHUB_STEP_SUMMARY"

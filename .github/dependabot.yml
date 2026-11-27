@@ -1,0 +1,43 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      go:
+        patterns: ["*"]
+    labels: [dependencies]
+    commit-message:
+      prefix: "build"
+      include: "scope"
+  - package-ecosystem: npm
+    directory: /website
+    schedule:
+      interval: weekly
+    groups:
+      website:
+        patterns: ["*"]
+    labels: [dependencies]
+    commit-message:
+      prefix: "build"
+      include: "scope"
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    labels: [dependencies]
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    labels: [dependencies]
+    commit-message:
+      prefix: "build"
+      include: "scope"

@@ -1,0 +1,62 @@
+name: 🐛 Bug report
+description: Something doesn't work as expected.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please check [Troubleshooting](https://emby-mcp.mattoddie.dev/docs/troubleshooting/) first.
+        **Remove your API key, server address, user names, file paths and other private details** from anything you paste.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: input
+    id: tool
+    attributes:
+      label: Tool(s) or command involved
+      placeholder: e.g. emby_add_tags, or emby-mcp check
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: Error output
+      description: The tool error text and/or `docker compose logs emby-mcp` output, with private details removed.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: emby-mcp version
+      description: From `emby-mcp version`, or the image tag you run.
+      placeholder: e.g. 1.0.0
+    validations:
+      required: true
+  - type: input
+    id: emby
+    attributes:
+      label: Emby Server version and platform
+      description: From `emby-mcp check` or the Emby dashboard.
+      placeholder: e.g. 4.10.2 on Linux (QNAP)
+    validations:
+      required: true
+  - type: input
+    id: access
+    attributes:
+      label: Settings
+      description: EMBY_ALLOW_WRITES and EMBY_ALLOW_DELETES on or off, EMBY_TOOLSETS if not all, and whether EMBY_URL is http or https.
+      placeholder: e.g. writes on, deletes off, toolsets all, http
+  - type: dropdown
+    id: transport
+    attributes:
+      label: Transport and client
+      options:
+        - HTTP — Claude Code
+        - HTTP — other client
+        - stdio — Claude Desktop
+        - stdio — other client
+    validations:
+      required: true

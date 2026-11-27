@@ -1,0 +1,6 @@
+# Test fixtures and CI smoke-test values, not real secrets.
+.github/workflows/ci.yml:generic-api-key:77
+.github/workflows/ci.yml:generic-api-key:125
+.github/workflows/ci.yml:curl-auth-header:126
+internal/config/config_test.go:generic-api-key:13
+internal/emby/embytest/mock.go:generic-api-key:21

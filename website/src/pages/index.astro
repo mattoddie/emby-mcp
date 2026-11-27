@@ -1,0 +1,1655 @@
+---
+import logo from "../../../docs/assets/logo.svg?raw";
+import { prompts, toolsets, totals } from "../lib/tools";
+import { DESCRIPTION as description } from "../lib/llms";
+
+const GITHUB = "https://github.com/mattoddie/emby-mcp";
+const title = "emby-mcp: your Emby library, finally in order";
+
+// The marquee's letterboard, one tile per character.
+const marquee = ["YOUR LIBRARY", "TAGGED, SORTED", "& COLLECTED"];
+
+// Made-up films for the poster wall: none of these exist.
+const posters = [
+  { t: "The Long Midwinter", y: 1998, xmas: true, bg: "#1f3b5c", fg: "#e9f1f7", motif: "snow" },
+  { t: "Hollow Point", y: 1995, bg: "#2b2522", fg: "#e8b04a", motif: "bars" },
+  { t: "Static Bloom", y: 2016, bg: "#3b1f4a", fg: "#f2c6e0", motif: "rings" },
+  { t: "A Very Merry Mix-Up", y: 2004, xmas: true, bg: "#8e1f30", fg: "#f7e7c8", motif: "dots" },
+  { t: "Saltwater Kings", y: 2008, bg: "#1c4a4a", fg: "#f1e2bf", motif: "waves" },
+  { t: "Northbound Express", y: 1987, xmas: true, bg: "#123326", fg: "#f3d27a", motif: "rails" },
+  { t: "The Quiet Orbit", y: 2019, bg: "#141826", fg: "#c9d6ff", motif: "sun" },
+  { t: "Paper Lanterns", y: 2011, bg: "#c9662a", fg: "#fff3df", motif: "sun" },
+  { t: "Mistletoe Motel", y: 2015, xmas: true, bg: "#5b2333", fg: "#ffd9a8", motif: "snow" },
+  { t: "Glasshouse", y: 2021, bg: "#dfe7d8", fg: "#22302a", motif: "bars" },
+  { t: "Second Reel", y: 1979, bg: "#e7cf9c", fg: "#3a2414", motif: "rings" },
+  { t: "Last Light, Larkspur", y: 2001, bg: "#40324f", fg: "#ffcf8a", motif: "waves" },
+];
+const xmasCount = posters.filter((p) => p.xmas).length;
+
+const examples = [
+  { q: "Tag every Christmas film “Christmas” and put them in a collection.", tools: ["search_items", "add_tags", "create_collection"] },
+  { q: "What haven't we watched that's under two hours and rated 12 or lower?", tools: ["search_items"] },
+  { q: "Make a collection of every Christopher Nolan film we have.", tools: ["search_items", "create_collection"] },
+  { q: "Which films have no plot summary, or never matched on TMDb?", tools: ["search_items", "get_item", "refresh_item"] },
+  { q: "Merge the tags “Sci Fi” and “Sci-Fi” into “Science Fiction”.", tools: ["list_values", "rename_tag"] },
+  { q: "What's playing in the living room, and why is it transcoding?", tools: ["list_sessions"] },
+];
+
+const rules = [
+  { n: "I", h: "Read-only until you say so", p: "Nothing changes on your server unless EMBY_ALLOW_WRITES is on. Deleting collections and playlists needs EMBY_ALLOW_DELETES as well." },
+  { n: "II", h: "Every change can be rehearsed", p: "Pass dry_run to any tool that changes something and it shows the plan and the request it would send, without sending it." },
+  { n: "III", h: "Your films are never deleted", p: "The delete tools only remove collections and playlists, after a confirmation. There is no tool that deletes media." },
+  { n: "IV", h: "Your edits stay put", p: "Lock tags and fields as you go, so a “replace all metadata” refresh can't quietly undo an evening of curating." },
+  { n: "V", h: "A record of every change", p: "EMBY_AUDIT_LOG writes one JSON line per change, with secrets redacted, so you can see what the assistant did and when." },
+  { n: "VI", h: "Your server, your key", p: "It talks only to your Emby, never follows redirects (so the API key can't leak), and needs a bearer token for HTTP clients." },
+];
+
+const clients = ["Claude Code", "Claude Desktop", "VS Code", "Cursor", "Codex", "Any MCP client"];
+
+const raw = GITHUB.replace("github.com", "raw.githubusercontent.com");
+const dockerSnippet = `mkdir emby-mcp && cd emby-mcp
+curl -fsSLO ${raw}/main/compose.yaml
+curl -fsSL ${raw}/main/example.env -o .env
+# set EMBY_URL, EMBY_API_KEY and MCP_AUTH_TOKEN in .env
+docker compose up -d`;
+const dockerConnect = `claude mcp add --transport http emby \\
+  http://<docker-host>:8080/mcp \\
+  --header "Authorization: Bearer <token>"`;
+const brewSnippet = `brew install mattoddie/tap/emby-mcp
+EMBY_URL=http://emby.lan:8096 EMBY_API_KEY=<key> emby-mcp check`;
+const brewConnect = `claude mcp add emby \\
+  --env EMBY_URL=http://emby.lan:8096 \\
+  --env EMBY_API_KEY=<key> \\
+  -- emby-mcp`;
+
+const levelWord = { read: "read", write: "write", delete: "delete" } as const;
+const screenName = (name: string, i: number) => (name === "raw" ? "Late show" : `Screen ${i + 1}`);
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={Astro.site} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta name="theme-color" content="#f4ecdd" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#160f0d" media="(prefers-color-scheme: dark)" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={Astro.site} />
+    <meta property="og:image" content={new URL("/og.png", Astro.site)} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={title} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script
+      type="application/ld+json"
+      set:html={JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "SoftwareSourceCode",
+        name: "emby-mcp",
+        description,
+        url: Astro.site?.href,
+        codeRepository: GITHUB,
+        license: "https://opensource.org/licenses/MIT",
+        runtimePlatform: "Docker",
+        author: { "@type": "Person", name: "Matt Oddie", url: "https://mattoddie.dev/" },
+        isPartOf: { "@type": "WebSite", name: "MCP servers by Matt Oddie", url: "https://mcp.mattoddie.dev/" },
+      })}
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,800;1,9..144,600;1,9..144,800&family=IBM+Plex+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600;700&display=swap"
+    />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <div class="perf" aria-hidden="true"></div>
+
+    <header class="nav">
+      <div class="wrap nav-inner">
+        <a class="brand" href="/" aria-label="emby-mcp home">
+          <span class="brand-logo" set:html={logo} />
+          <span>emby-mcp</span>
+        </a>
+        <nav aria-label="Main">
+          <a href="/docs/">Docs</a>
+          <a href="#programme">Tools</a>
+          <a href="#getting-in" class="hide-sm">Set up</a>
+          <a href="https://mcp.mattoddie.dev/" class="hide-sm">All servers</a>
+          <a class="gh" href={GITHUB} aria-label="emby-mcp on GitHub">
+            <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.72 1.22 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z"></path></svg>
+            <span class="hide-sm">GitHub</span>
+          </a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <!-- Hero: the headline, and a cinema marquee. -->
+      <section class="hero">
+        <div class="wrap hero-grid">
+          <div class="hero-copy">
+            <p class="kicker">An MCP server for Emby &middot; Open source &middot; MIT</p>
+            <h1>Your film library, <em>finally in order.</em></h1>
+            <p class="lede">
+              emby-mcp lets Claude and other AI assistants into your Emby server. Ask what's unwatched and under two hours, which films never matched,
+              what's playing in the living room. Then, when you allow it, let it tag hundreds of films in one go, build collections and playlists, and tidy
+              the metadata.
+            </p>
+            <div class="ctas">
+              <a class="ticket-btn primary" href="/docs/getting-started/"><span class="stub">Admit one</span><span>Get started</span></a>
+              <a class="ticket-btn" href={GITHUB}><span class="stub">Source</span><span>GitHub</span></a>
+            </div>
+            <p class="installs">
+              <code>docker pull ghcr.io/mattoddie/emby-mcp</code>
+              <span>or</span>
+              <code>brew install mattoddie/tap/emby-mcp</code>
+            </p>
+          </div>
+
+          <div class="marquee" aria-label="Now showing: your library, tagged, sorted and collected">
+            <div class="bulbs" aria-hidden="true">{Array.from({ length: 44 }, (_, i) => <i style={`--i:${i}`} />)}</div>
+            <div class="marquee-face">
+              <p class="now">Now showing</p>
+              <div class="board" aria-hidden="true">
+                {
+                  marquee.map((line) => (
+                    <div class="line">
+                      {[...line].map((ch) => (ch === " " ? <span class="gap" /> : <span class="tile">{ch}</span>))}
+                    </div>
+                  ))
+                }
+              </div>
+              <p class="showtimes">{totals.tools} tools &middot; {totals.prompts} prompts &middot; nightly</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- A running ticker in a film strip. -->
+      <div class="ticker" aria-label="At a glance">
+        <div class="ticker-track">
+          {
+            [0, 1].map((copy) => (
+              <ul aria-hidden={copy === 1 ? "true" : undefined}>
+                <li>{totals.tools} tools in {totals.toolsets} toolsets</li>
+                <li>{totals.prompts} guided prompts</li>
+                <li>Read-only by default</li>
+                <li>Dry run on every change</li>
+                <li>Bulk tagging, 500 items a call</li>
+                <li>Docker &middot; Homebrew &middot; Claude Desktop</li>
+                <li>Tested on Emby Server 4.10</li>
+              </ul>
+            ))
+          }
+        </div>
+      </div>
+
+      <!-- The scene: a screenplay page beside a poster wall that gets tagged. -->
+      <section class="scene-section" id="scene">
+        <div class="wrap">
+          <p class="kicker center">Act one</p>
+          <h2 class="title center">Say what you want. <em>Watch it happen.</em></h2>
+          <p class="sub center">One sentence, and the assistant finds the films, tags them and makes the set, using the same tools you'd use in Emby, only faster.</p>
+
+          <div class="scene" data-scene>
+            <article class="script" aria-label="An example conversation">
+              <p class="slug">INT. LIVING ROOM &mdash; A WEEK BEFORE CHRISTMAS</p>
+              <p class="action">The sofa. A cup of tea. A library of films nobody has organised since 2019.</p>
+              <p class="who">YOU</p>
+              <p class="dlg">Find our Christmas films, tag them “Christmas” and put them in a collection.</p>
+              <p class="who">CLAUDE</p>
+              <p class="paren">(searching, then tagging)</p>
+              <p class="calls"><code>emby_search_items</code> <code>emby_add_tags</code> <code>emby_create_collection</code></p>
+              <p class="dlg">
+                Done. I tagged {xmasCount} films “Christmas” and made a collection, <strong>Christmas Classics</strong>, in release order. I locked the tags, so a metadata
+                refresh won't undo them.
+              </p>
+              <p class="action fade">FADE OUT.</p>
+              <button class="replay" type="button" data-replay>Run it again</button>
+            </article>
+
+            <div class="wall" aria-label="Example poster wall with the Christmas films tagged">
+              {
+                posters.map((p, i) => (
+                  <figure class={`poster m-${p.motif}${p.xmas ? " xmas" : ""}`} style={`--bg:${p.bg};--fg:${p.fg};--n:${i}`}>
+                    <div class="art" aria-hidden="true" />
+                    <figcaption>
+                      <span class="pt">{p.t}</span>
+                      <span class="py">{p.y}</span>
+                    </figcaption>
+                    {p.xmas && <span class="stamp">Christmas</span>}
+                  </figure>
+                ))
+              }
+              <div class="boxset" aria-hidden="true">
+                <span class="boxset-logo" set:html={logo} />
+                <span>
+                  <b>Christmas Classics</b> &middot; new collection &middot; {xmasCount} films
+                </span>
+              </div>
+            </div>
+          </div>
+          <p class="fineprint center">Illustration with made-up films.</p>
+        </div>
+      </section>
+
+      <!-- Example requests as ticket stubs. -->
+      <section class="asks">
+        <div class="wrap">
+          <p class="kicker center">Ask the projectionist</p>
+          <h2 class="title center">Plain English in, <em>a tidier library out.</em></h2>
+          <div class="stubs">
+            {
+              examples.map((e, i) => (
+                <div class="stub-card">
+                  <div class="stub-no">
+                    <span>No.</span>
+                    <b>{String(i + 1).padStart(3, "0")}</b>
+                  </div>
+                  <div class="stub-body">
+                    <p>{e.q}</p>
+                    <ul>
+                      {e.tools.map((t) => (
+                        <li>{t}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              ))
+            }
+          </div>
+        </div>
+      </section>
+
+      <!-- The programme: every toolset and tool, printed like a cinema listing. -->
+      <section class="programme-section" id="programme">
+        <div class="wrap">
+          <div class="programme">
+            <header class="prog-head">
+              <p class="kicker">Tonight's programme</p>
+              <h2>{totals.tools} tools, {totals.toolsets} screens</h2>
+              <p>
+                {totals.read} read, {totals.write} write and {totals.delete} delete tools, grouped so you can switch whole screens off with <code>EMBY_TOOLSETS</code> and keep the
+                assistant's context small. Plus {totals.prompts} guided prompts: {prompts.map((p, i) => <><code>{p}</code>{i < prompts.length - 2 ? ", " : i === prompts.length - 2 ? " and " : ""}</>)}.
+              </p>
+            </header>
+            <div class="screens">
+              {
+                toolsets.map((ts, i) => (
+                  <section class={`screen${ts.name === "raw" ? " late" : ""}`}>
+                    <h3>
+                      <span class="screen-no">{screenName(ts.name, i)}</span>
+                      <span class="screen-name">{ts.name}</span>
+                    </h3>
+                    <p class="screen-sum">{ts.summary.replace(/`/g, "")}</p>
+                    <ul>
+                      {ts.tools.map((t) => (
+                        <li>
+                          <a href={`/docs/tools/#${t.name}`}>
+                            <span class="tname">{t.title}</span>
+                            <span class="leader" aria-hidden="true" />
+                            <span class={`lvl ${t.level}`}>{levelWord[t.level]}</span>
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ))
+              }
+            </div>
+            <p class="prog-foot"><a href="/docs/tools/">The full tool reference, with every argument &rarr;</a></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- House rules. -->
+      <section class="rules-section">
+        <div class="wrap">
+          <div class="notice">
+            <p class="kicker center">House rules</p>
+            <h2 class="title center">Careful with your library <em>by design.</em></h2>
+            <ol class="rules">
+              {
+                rules.map((r) => (
+                  <li>
+                    <span class="numeral">{r.n}</span>
+                    <div>
+                      <h3>{r.h}</h3>
+                      <p>{r.p}</p>
+                    </div>
+                  </li>
+                ))
+              }
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <!-- Getting in: setup. -->
+      <section class="setup" id="getting-in">
+        <div class="wrap">
+          <p class="kicker center">Getting in</p>
+          <h2 class="title center">Five minutes from <em>box office to curtain.</em></h2>
+          <ol class="steps">
+            <li>
+              <h3>Make an API key</h3>
+              <p>In the Emby dashboard, open <b>Advanced &rarr; API Keys</b> (or <b>Settings &rarr; API Keys</b>) and press <b>New API Key</b>. Call it Claude.</p>
+            </li>
+            <li>
+              <h3>Run emby-mcp</h3>
+              <div class="booth" data-tabs>
+                <div class="booth-tabs" role="tablist" aria-label="How to run it">
+                  <button role="tab" aria-selected="true" data-tab="docker">Docker</button>
+                  <button role="tab" aria-selected="false" data-tab="brew">Homebrew</button>
+                  <button role="tab" aria-selected="false" data-tab="desktop">Claude Desktop</button>
+                </div>
+                <div class="booth-panel" data-panel="docker">
+                  <div class="code"><pre><code>{dockerSnippet}</code></pre><button class="copy" data-copy={dockerSnippet}>Copy</button></div>
+                  <p class="then">Then connect your client:</p>
+                  <div class="code"><pre><code>{dockerConnect}</code></pre><button class="copy" data-copy={dockerConnect}>Copy</button></div>
+                </div>
+                <div class="booth-panel" data-panel="brew" hidden>
+                  <div class="code"><pre><code>{brewSnippet}</code></pre><button class="copy" data-copy={brewSnippet}>Copy</button></div>
+                  <p class="then">Then let Claude Code start it when it needs it:</p>
+                  <div class="code"><pre><code>{brewConnect}</code></pre><button class="copy" data-copy={brewConnect}>Copy</button></div>
+                </div>
+                <div class="booth-panel" data-panel="desktop" hidden>
+                  <p>
+                    Download the <code>.mcpb</code> bundle for your computer from the <a href={`${GITHUB}/releases/latest`}>latest release</a> and open it. Claude Desktop asks
+                    for your Emby address and API key, and installs it as an extension: no Docker, no terminal.
+                  </p>
+                  <p><a href="/docs/clients/#claude-desktop">Claude Desktop setup &rarr;</a></p>
+                </div>
+              </div>
+            </li>
+            <li>
+              <h3>Ask for something</h3>
+              <p>Start read-only: <i>“Give me a report on my library.”</i> When you're happy, set <code>EMBY_ALLOW_WRITES=true</code> and start tagging.</p>
+            </li>
+          </ol>
+          <p class="clients">
+            <span>Works with</span>
+            {clients.map((c) => <b>{c}</b>)}
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="credits">
+      <div class="wrap">
+        <p class="roll-title">emby-mcp</p>
+        <dl>
+          <div><dt>Written by</dt><dd><a href="https://mattoddie.dev/">Matt Oddie</a></dd></div>
+          <div><dt>Licence</dt><dd>MIT</dd></div>
+          <div><dt>Source</dt><dd><a href={GITHUB}>github.com/mattoddie/emby-mcp</a></dd></div>
+          <div><dt>Documentation</dt><dd><a href="/docs/">emby-mcp.mattoddie.dev/docs</a></dd></div>
+          <div><dt>Also showing</dt><dd><a href="https://mcp.mattoddie.dev/">More MCP servers</a></dd></div>
+          <div><dt>For assistants</dt><dd><a href="/llms.txt">llms.txt</a></dd></div>
+        </dl>
+        <p class="disclaimer">An independent community project. Not made, endorsed or supported by Emby LLC. Emby is a trademark of its owner.</p>
+      </div>
+      <div class="perf" aria-hidden="true"></div>
+    </footer>
+
+    <script>
+      // Copy buttons.
+      for (const btn of document.querySelectorAll<HTMLButtonElement>("button.copy")) {
+        btn.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(btn.dataset.copy ?? "");
+            btn.textContent = "Copied";
+          } catch {
+            btn.textContent = "Select & copy";
+          }
+          setTimeout(() => (btn.textContent = "Copy"), 1600);
+        });
+      }
+
+      // Setup tabs, remembering the choice.
+      const tabs = [...document.querySelectorAll<HTMLButtonElement>("[data-tabs] [role=tab]")];
+      const show = (name: string) => {
+        for (const t of tabs) t.setAttribute("aria-selected", String(t.dataset.tab === name));
+        for (const p of document.querySelectorAll<HTMLElement>("[data-panel]")) p.hidden = p.dataset.panel !== name;
+      };
+      for (const t of tabs) {
+        t.addEventListener("click", () => {
+          show(t.dataset.tab ?? "docker");
+          try {
+            localStorage.setItem("emby-install", t.dataset.tab ?? "docker");
+          } catch {}
+        });
+        t.addEventListener("keydown", (e) => {
+          if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+          const step = e.key === "ArrowRight" ? 1 : tabs.length - 1;
+          const next = tabs[(tabs.indexOf(t) + step) % tabs.length];
+          next.focus();
+          next.click();
+        });
+      }
+      try {
+        const saved = localStorage.getItem("emby-install");
+        if (saved && tabs.some((t) => t.dataset.tab === saved)) show(saved);
+      } catch {}
+
+      // The scene plays when it comes into view, and again on request.
+      const scene = document.querySelector<HTMLElement>("[data-scene]");
+      if (scene) {
+        const play = () => {
+          scene.classList.remove("play");
+          void scene.offsetWidth; // restart the animations
+          scene.classList.add("play");
+        };
+        if ("IntersectionObserver" in window) {
+          const io = new IntersectionObserver(
+            (entries) => {
+              if (entries.some((e) => e.isIntersecting)) {
+                play();
+                io.disconnect();
+              }
+            },
+            { threshold: 0.35 },
+          );
+          io.observe(scene);
+        } else {
+          scene.classList.add("play");
+        }
+        document.querySelector("[data-replay]")?.addEventListener("click", play);
+      }
+    </script>
+
+    <style is:global>
+      :root {
+        --paper: #f4ecdd;
+        --paper-2: #ece2cf;
+        --card: #fbf6ec;
+        --ink: #1d1714;
+        --ink-2: #4a3f37;
+        --ink-3: #76685a;
+        --rule: #d6c8b1;
+        --velvet: #8e1f30;
+        --velvet-2: #6a1523;
+        --brass: #c08a24;
+        --brass-2: #f3d27a;
+        --night: #1d1714;
+        --on-night: #f4ecdd;
+        --shadow: 0 1px 0 rgba(29, 23, 20, 0.04), 0 12px 30px -18px rgba(29, 23, 20, 0.45);
+        --display: "Fraunces", Georgia, "Times New Roman", serif;
+        --sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        --script: "Courier Prime", "Courier New", Courier, monospace;
+        color-scheme: light;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --paper: #160f0d;
+          --paper-2: #1e1512;
+          --card: #221815;
+          --ink: #f4ecdd;
+          --ink-2: #d4c6b1;
+          --ink-3: #a4937e;
+          --rule: #3d2f28;
+          --velvet: #e2677a;
+          --velvet-2: #b8475a;
+          --brass: #e0a63c;
+          --night: #0d0807;
+          --on-night: #f4ecdd;
+          --shadow: 0 1px 0 rgba(0, 0, 0, 0.3), 0 16px 34px -18px rgba(0, 0, 0, 0.8);
+          color-scheme: dark;
+        }
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font: 400 17px/1.6 var(--sans);
+        -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
+      }
+      a {
+        color: var(--velvet);
+        text-underline-offset: 3px;
+      }
+      code {
+        font-family: var(--mono);
+        font-size: 0.86em;
+      }
+      h1,
+      h2,
+      h3 {
+        font-family: var(--display);
+        line-height: 1.05;
+        margin: 0;
+      }
+      em {
+        font-style: italic;
+        color: var(--velvet);
+      }
+      .wrap {
+        width: min(1160px, 100% - 32px);
+        margin-inline: auto;
+      }
+      .skip {
+        position: absolute;
+        left: -9999px;
+      }
+      .skip:focus {
+        left: 16px;
+        top: 16px;
+        z-index: 10;
+        background: var(--ink);
+        color: var(--paper);
+        padding: 8px 12px;
+      }
+      :focus-visible {
+        outline: 2px solid var(--brass);
+        outline-offset: 3px;
+      }
+
+      /* A strip of film perforations. */
+      .perf {
+        height: 22px;
+        background-color: var(--night);
+        background-image: radial-gradient(circle at 50% 50%, transparent 0, transparent 0),
+          linear-gradient(90deg, transparent 0 6px, var(--paper) 6px 20px, transparent 20px 28px);
+        background-size: 28px 10px;
+        background-repeat: repeat-x;
+        background-position: 0 6px;
+      }
+
+      .kicker {
+        font: 500 12.5px/1 var(--mono);
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--velvet);
+        margin: 0 0 16px;
+      }
+      .center {
+        text-align: center;
+      }
+      .title {
+        font-size: clamp(34px, 5vw, 56px);
+        font-weight: 800;
+        letter-spacing: -0.025em;
+      }
+      .sub {
+        color: var(--ink-2);
+        max-width: 640px;
+        margin: 18px auto 0;
+      }
+      .fineprint {
+        font: 400 12px var(--mono);
+        color: var(--ink-3);
+        margin-top: 14px;
+      }
+
+      /* Nav */
+      .nav {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        background: color-mix(in srgb, var(--paper) 88%, transparent);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid var(--rule);
+      }
+      .nav-inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 62px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--ink);
+        text-decoration: none;
+        font: 600 21px var(--display);
+      }
+      .brand-logo svg {
+        width: 34px;
+        height: 34px;
+        display: block;
+      }
+      .nav nav {
+        display: flex;
+        align-items: center;
+        gap: 22px;
+      }
+      .nav nav a {
+        color: var(--ink-2);
+        text-decoration: none;
+        font-weight: 500;
+        font-size: 15px;
+      }
+      .nav nav a:hover {
+        color: var(--velvet);
+      }
+      .nav .gh {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        border: 1px solid var(--rule);
+        border-radius: 999px;
+        padding: 6px 12px;
+      }
+
+      /* Hero */
+      .hero {
+        padding: 72px 0 84px;
+        background:
+          radial-gradient(60% 70% at 100% 0%, color-mix(in srgb, var(--velvet) 12%, transparent), transparent 60%),
+          radial-gradient(50% 60% at 0% 100%, color-mix(in srgb, var(--brass) 14%, transparent), transparent 60%);
+      }
+      .hero-grid {
+        display: grid;
+        grid-template-columns: 1.08fr 0.92fr;
+        gap: 56px;
+        align-items: center;
+      }
+      .hero h1 {
+        font-size: clamp(46px, 7vw, 92px);
+        font-weight: 800;
+        letter-spacing: -0.035em;
+        line-height: 0.98;
+      }
+      .lede {
+        font-size: 19px;
+        color: var(--ink-2);
+        margin: 26px 0 0;
+        max-width: 560px;
+      }
+      .ctas {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        margin-top: 34px;
+      }
+      .ticket-btn {
+        --notch: 9px;
+        display: inline-flex;
+        align-items: stretch;
+        text-decoration: none;
+        color: var(--ink);
+        background: var(--card);
+        border-radius: 8px;
+        font-weight: 600;
+        box-shadow: var(--shadow);
+        mask: radial-gradient(circle var(--notch) at 0 50%, transparent 98%, #000) left / 51% 100% no-repeat,
+          radial-gradient(circle var(--notch) at 100% 50%, transparent 98%, #000) right / 51% 100% no-repeat;
+        transition: transform 0.15s ease;
+      }
+      .ticket-btn:hover {
+        transform: translateY(-2px) rotate(-0.5deg);
+      }
+      .ticket-btn > span {
+        padding: 14px 22px;
+      }
+      .ticket-btn .stub {
+        font: 500 11px/1 var(--mono);
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        display: flex;
+        align-items: center;
+        border-right: 2px dashed color-mix(in srgb, currentColor 35%, transparent);
+        color: var(--ink-3);
+        padding-left: 24px;
+      }
+      .ticket-btn.primary {
+        background: var(--velvet);
+        color: #fff7ea;
+      }
+      .ticket-btn.primary .stub {
+        color: var(--brass-2);
+      }
+      .installs {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+        margin: 26px 0 0;
+        color: var(--ink-3);
+        font-size: 14px;
+      }
+      .installs code {
+        background: var(--paper-2);
+        border: 1px solid var(--rule);
+        padding: 6px 10px;
+        border-radius: 6px;
+        color: var(--ink);
+      }
+
+      /* The marquee */
+      .marquee {
+        position: relative;
+        background: var(--night);
+        border-radius: 18px;
+        padding: 26px;
+        box-shadow: 0 30px 60px -30px rgba(29, 23, 20, 0.7);
+        transform: rotate(1.2deg);
+      }
+      .bulbs {
+        position: absolute;
+        inset: 9px;
+        pointer-events: none;
+      }
+      .bulbs i {
+        --count: 44;
+        position: absolute;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: #ffe6a8;
+        box-shadow: 0 0 10px 2px rgba(255, 210, 120, 0.55);
+        animation: chase 2.2s linear infinite;
+        animation-delay: calc(var(--i) * -0.05s);
+      }
+      /* Lay the bulbs around the edge: 14 along each long side, 8 down each short one. */
+      .bulbs i:nth-child(-n + 14) {
+        top: 0;
+        left: calc((var(--i)) / 13 * (100% - 9px));
+      }
+      .bulbs i:nth-child(n + 15):nth-child(-n + 22) {
+        right: 0;
+        top: calc((var(--i) - 13) / 9 * (100% - 9px));
+      }
+      .bulbs i:nth-child(n + 23):nth-child(-n + 36) {
+        bottom: 0;
+        right: calc((var(--i) - 22) / 13 * (100% - 9px));
+      }
+      .bulbs i:nth-child(n + 37) {
+        left: 0;
+        bottom: calc((var(--i) - 35) / 9 * (100% - 9px));
+      }
+      @keyframes chase {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.25;
+          box-shadow: none;
+        }
+      }
+      .marquee-face {
+        border: 2px solid #3b2d26;
+        border-radius: 10px;
+        padding: 22px 18px 18px;
+        text-align: center;
+        background: linear-gradient(180deg, #241a16, #170f0c);
+      }
+      .now {
+        font: 800 italic 30px var(--display);
+        color: var(--brass-2);
+        margin: 0 0 16px;
+        letter-spacing: -0.01em;
+      }
+      .board {
+        display: grid;
+        gap: 8px;
+        background: #0b0706;
+        padding: 14px 10px;
+        border-radius: 6px;
+        background-image: repeating-linear-gradient(180deg, transparent 0 37px, #2a201c 37px 38px);
+      }
+      .board .line {
+        display: flex;
+        justify-content: center;
+        gap: 3px;
+      }
+      .tile {
+        display: inline-grid;
+        place-items: center;
+        width: min(1.75vw, 23px);
+        height: min(2.5vw, 33px);
+        background: #f8f1e3;
+        color: #1d1714;
+        font: 700 min(1.45vw, 19px) var(--sans);
+        border-radius: 2px;
+        box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.12);
+      }
+      .gap {
+        width: clamp(8px, 1vw, 12px);
+      }
+      .showtimes {
+        font: 500 12px var(--mono);
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: #b9a993;
+        margin: 16px 0 0;
+      }
+
+      /* Ticker */
+      .ticker {
+        background: var(--night);
+        color: var(--on-night);
+        overflow: hidden;
+        border-block: 6px solid var(--night);
+        position: relative;
+      }
+      .ticker::before,
+      .ticker::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        height: 6px;
+        background-image: linear-gradient(90deg, transparent 0 6px, color-mix(in srgb, var(--on-night) 85%, transparent) 6px 16px, transparent 16px 24px);
+        background-size: 24px 6px;
+      }
+      .ticker::before {
+        top: 0;
+      }
+      .ticker::after {
+        bottom: 0;
+      }
+      .ticker-track {
+        display: flex;
+        width: max-content;
+        animation: tick 40s linear infinite;
+      }
+      .ticker ul {
+        display: flex;
+        list-style: none;
+        margin: 0;
+        padding: 18px 0;
+      }
+      .ticker li {
+        font: 500 13px var(--mono);
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        white-space: nowrap;
+        padding: 0 28px;
+      }
+      .ticker li::after {
+        content: "\2605";
+        color: var(--brass-2);
+        margin-left: 56px;
+      }
+      @keyframes tick {
+        to {
+          transform: translateX(-50%);
+        }
+      }
+
+      /* The scene */
+      .scene-section {
+        padding: 104px 0 80px;
+      }
+      .scene {
+        display: grid;
+        grid-template-columns: 0.9fr 1.1fr;
+        gap: 40px;
+        margin-top: 54px;
+        align-items: start;
+      }
+      .script {
+        background: #fffdf7;
+        color: #1d1714;
+        font: 400 15px/1.55 var(--script);
+        padding: 40px 40px 30px;
+        border-radius: 4px;
+        box-shadow: var(--shadow), 0 0 0 1px rgba(29, 23, 20, 0.06);
+        position: relative;
+        background-image: linear-gradient(90deg, transparent 0 22px, rgba(142, 31, 48, 0.18) 22px 23px, transparent 23px);
+      }
+      .script::before,
+      .script::after {
+        content: "";
+        position: absolute;
+        left: 9px;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--paper-2);
+        box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.25);
+      }
+      .script::before {
+        top: 22%;
+      }
+      .script::after {
+        bottom: 22%;
+      }
+      .script p {
+        margin: 0 0 12px;
+      }
+      .slug {
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+      .who {
+        text-align: center;
+        margin-top: 18px !important;
+        margin-bottom: 2px !important;
+        text-transform: uppercase;
+      }
+      .dlg {
+        margin-inline: 12% !important;
+      }
+      .paren {
+        text-align: center;
+        color: #5c5048;
+      }
+      .calls {
+        text-align: center;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 6px;
+      }
+      .calls code {
+        font: 500 11.5px var(--mono);
+        background: #f3e8d4;
+        border: 1px solid #e2d3b8;
+        padding: 3px 7px;
+        border-radius: 4px;
+        color: var(--velvet-2);
+      }
+      .fade {
+        text-align: right;
+        margin-top: 20px !important;
+      }
+      .replay {
+        font: 500 12px var(--mono);
+        letter-spacing: 0.08em;
+        background: none;
+        border: 1px solid #d6c8b1;
+        color: #4a3f37;
+        border-radius: 999px;
+        padding: 6px 14px;
+        cursor: pointer;
+      }
+      .replay:hover {
+        border-color: var(--velvet);
+        color: var(--velvet);
+      }
+
+      .wall {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 14px;
+        position: relative;
+        padding-bottom: 70px;
+      }
+      .poster {
+        position: relative;
+        margin: 0;
+        aspect-ratio: 2 / 3;
+        background: var(--bg);
+        color: var(--fg);
+        border-radius: 5px;
+        overflow: hidden;
+        box-shadow: 0 10px 22px -14px rgba(0, 0, 0, 0.7);
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        transition:
+          transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1),
+          filter 0.6s ease,
+          opacity 0.6s ease;
+      }
+      .poster .art {
+        position: absolute;
+        inset: 0;
+        opacity: 0.9;
+      }
+      .m-sun .art {
+        background: radial-gradient(circle at 50% 38%, var(--fg) 0 22%, transparent 23%), linear-gradient(180deg, transparent 55%, rgba(0, 0, 0, 0.25) 55%);
+      }
+      .m-rings .art {
+        background: repeating-radial-gradient(circle at 70% 30%, transparent 0 10px, color-mix(in srgb, var(--fg) 45%, transparent) 10px 12px);
+      }
+      .m-bars .art {
+        background: repeating-linear-gradient(90deg, transparent 0 14px, color-mix(in srgb, var(--fg) 35%, transparent) 14px 18px);
+        mask: linear-gradient(180deg, #000 0 58%, transparent 60%);
+      }
+      .m-waves .art {
+        background: repeating-radial-gradient(circle at 50% 120%, transparent 0 12px, color-mix(in srgb, var(--fg) 40%, transparent) 12px 15px);
+      }
+      .m-dots .art {
+        background: radial-gradient(circle, color-mix(in srgb, var(--fg) 55%, transparent) 2px, transparent 3px) 0 0 / 16px 16px;
+        mask: linear-gradient(180deg, #000 0 60%, transparent 62%);
+      }
+      .m-snow .art {
+        background:
+          radial-gradient(circle, #fff 1.5px, transparent 2px) 0 0 / 22px 26px,
+          radial-gradient(circle, rgba(255, 255, 255, 0.7) 1px, transparent 1.5px) 11px 13px / 22px 26px,
+          linear-gradient(180deg, transparent 62%, rgba(255, 255, 255, 0.85) 62%);
+      }
+      .m-rails .art {
+        background: linear-gradient(180deg, transparent 50%, rgba(0, 0, 0, 0.25) 50%),
+          conic-gradient(from 160deg at 50% 50%, transparent 0 15deg, color-mix(in srgb, var(--fg) 70%, transparent) 15deg 18deg, transparent 18deg 22deg, color-mix(in srgb, var(--fg) 70%, transparent) 22deg 25deg, transparent 25deg);
+      }
+      .poster figcaption {
+        position: relative;
+        padding: 10px 10px 11px;
+        background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--bg) 92%, black));
+        display: grid;
+        gap: 2px;
+      }
+      .pt {
+        font: 700 clamp(12px, 1.25vw, 15px) / 1.05 var(--display);
+        letter-spacing: -0.01em;
+      }
+      .py {
+        font: 500 10px var(--mono);
+        opacity: 0.75;
+      }
+      .stamp {
+        position: absolute;
+        top: 12%;
+        left: 50%;
+        transform: translate(-50%, 0) rotate(-12deg) scale(1);
+        font: 700 11px var(--mono);
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #b5121b;
+        background: rgba(255, 250, 240, 0.92);
+        border: 2px solid #b5121b;
+        border-radius: 4px;
+        padding: 4px 8px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+      }
+      .boxset {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: var(--card);
+        border: 1px solid var(--rule);
+        border-radius: 10px;
+        padding: 10px 14px;
+        font-size: 14px;
+        color: var(--ink-2);
+        box-shadow: var(--shadow);
+      }
+      .boxset b {
+        color: var(--ink);
+        font-family: var(--display);
+        font-size: 16px;
+      }
+      .boxset-logo svg {
+        width: 30px;
+        height: 30px;
+        display: block;
+      }
+
+      /* Before the scene plays: no stamps, no box set. Then they arrive in order. */
+      .scene .stamp,
+      .scene .boxset,
+      .scene .script > :not(.slug):not(.action:first-of-type) {
+        opacity: 0;
+      }
+      .scene.play .script > * {
+        animation: appear 0.5s ease forwards;
+      }
+      .scene.play .script > :nth-child(3),
+      .scene.play .script > :nth-child(4) {
+        animation-delay: 0.5s;
+      }
+      .scene.play .script > :nth-child(5),
+      .scene.play .script > :nth-child(6) {
+        animation-delay: 1.5s;
+      }
+      .scene.play .script > :nth-child(7) {
+        animation-delay: 1.9s;
+      }
+      .scene.play .script > :nth-child(8) {
+        animation-delay: 4.3s;
+      }
+      .scene.play .script > :nth-child(9),
+      .scene.play .script > :nth-child(10) {
+        animation-delay: 5.2s;
+      }
+      .scene.play .poster:not(.xmas) {
+        animation: dim 0.6s ease 2.4s forwards;
+      }
+      .scene.play .stamp {
+        animation: stamp 0.35s cubic-bezier(0.3, 1.6, 0.5, 1) forwards;
+        animation-delay: calc(2.6s + var(--n) * 0.12s);
+      }
+      .scene.play .poster.xmas {
+        animation: lift 0.6s ease 2.6s forwards;
+      }
+      .scene.play .boxset {
+        animation: appear 0.6s ease 4.3s forwards;
+      }
+      @keyframes appear {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      @keyframes dim {
+        to {
+          filter: grayscale(0.85) brightness(0.8);
+          opacity: 0.45;
+        }
+      }
+      @keyframes lift {
+        to {
+          transform: translateY(-6px);
+          box-shadow:
+            0 0 0 3px var(--brass),
+            0 18px 30px -14px rgba(0, 0, 0, 0.8);
+        }
+      }
+      @keyframes stamp {
+        from {
+          opacity: 0;
+          transform: translate(-50%, 0) rotate(-12deg) scale(2.2);
+        }
+        to {
+          opacity: 1;
+          transform: translate(-50%, 0) rotate(-12deg) scale(1);
+        }
+      }
+
+      /* Ask: ticket stubs */
+      .asks {
+        padding: 70px 0 100px;
+      }
+      .stubs {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 18px;
+        margin-top: 48px;
+      }
+      .stub-card {
+        --notch: 11px;
+        display: grid;
+        grid-template-columns: 74px 1fr;
+        background: var(--card);
+        border-radius: 10px;
+        box-shadow: var(--shadow);
+        mask:
+          radial-gradient(circle var(--notch) at 74px 0, transparent 98%, #000) top / 100% 51% no-repeat,
+          radial-gradient(circle var(--notch) at 74px 100%, transparent 98%, #000) bottom / 100% 51% no-repeat;
+        transition: transform 0.2s ease;
+      }
+      .stub-card:nth-child(3n + 2) {
+        transform: rotate(0.6deg);
+      }
+      .stub-card:nth-child(3n) {
+        transform: rotate(-0.5deg);
+      }
+      .stub-card:hover {
+        transform: translateY(-3px) rotate(0);
+      }
+      .stub-no {
+        border-right: 2px dashed var(--rule);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        color: var(--velvet);
+        background: color-mix(in srgb, var(--velvet) 7%, transparent);
+      }
+      .stub-no span {
+        font: 500 10px var(--mono);
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+      }
+      .stub-no b {
+        font: 800 22px var(--display);
+      }
+      .stub-body {
+        padding: 18px 18px 16px;
+      }
+      .stub-body p {
+        margin: 0 0 12px;
+        font: 600 17px/1.35 var(--display);
+        color: var(--ink);
+      }
+      .stub-body ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .stub-body li {
+        font: 500 11px var(--mono);
+        color: var(--ink-3);
+        border: 1px solid var(--rule);
+        border-radius: 4px;
+        padding: 2px 6px;
+      }
+
+      /* The programme */
+      .programme-section {
+        padding: 30px 0 110px;
+      }
+      .programme {
+        background: var(--card);
+        border: 1px solid var(--rule);
+        box-shadow: var(--shadow);
+        padding: clamp(24px, 5vw, 64px);
+        position: relative;
+        outline: 1px solid var(--rule);
+        outline-offset: -12px;
+      }
+      .prog-head {
+        text-align: center;
+        max-width: 760px;
+        margin: 0 auto 46px;
+      }
+      .prog-head h2 {
+        font-size: clamp(36px, 5vw, 60px);
+        font-weight: 800;
+        letter-spacing: -0.03em;
+      }
+      .prog-head p:last-child {
+        color: var(--ink-2);
+        margin-top: 16px;
+      }
+      .screens {
+        columns: 2 380px;
+        column-gap: 56px;
+        column-rule: 1px solid var(--rule);
+      }
+      .screen {
+        break-inside: avoid;
+        margin-bottom: 38px;
+      }
+      .screen h3 {
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+        border-bottom: 2px solid var(--ink);
+        padding-bottom: 6px;
+      }
+      .screen-no {
+        font: 500 11px var(--mono);
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--velvet);
+      }
+      .screen-name {
+        font: 800 italic 28px var(--display);
+        letter-spacing: -0.02em;
+      }
+      .screen-sum {
+        font-size: 14px;
+        color: var(--ink-3);
+        margin: 8px 0 10px;
+      }
+      .screen ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .screen li a {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        padding: 4px 0;
+        color: var(--ink);
+        text-decoration: none;
+      }
+      .screen li a:hover .tname {
+        color: var(--velvet);
+        text-decoration: underline;
+      }
+      .tname {
+        font-size: 15.5px;
+      }
+      .leader {
+        flex: 1;
+        border-bottom: 2px dotted var(--rule);
+        transform: translateY(-4px);
+        min-width: 20px;
+      }
+      .lvl {
+        font: 500 10.5px var(--mono);
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--ink-3);
+      }
+      .lvl.write {
+        color: var(--brass);
+      }
+      .lvl.delete {
+        color: var(--velvet);
+      }
+      .screen.late .screen-name {
+        color: var(--ink-3);
+      }
+      .prog-foot {
+        text-align: center;
+        margin: 10px 0 0;
+        font-weight: 600;
+      }
+
+      /* House rules */
+      .rules-section {
+        padding: 0 0 110px;
+      }
+      .notice {
+        background: var(--night);
+        color: var(--on-night);
+        border-radius: 22px;
+        padding: clamp(28px, 6vw, 72px);
+        border: 6px double color-mix(in srgb, var(--brass) 70%, transparent);
+      }
+      .notice .kicker {
+        color: var(--brass-2);
+      }
+      .notice em {
+        color: var(--brass-2);
+      }
+      .rules {
+        list-style: none;
+        padding: 0;
+        margin: 46px 0 0;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 26px 48px;
+      }
+      .rules li {
+        display: grid;
+        grid-template-columns: 56px 1fr;
+        gap: 14px;
+      }
+      .numeral {
+        font: 800 italic 30px var(--display);
+        color: var(--brass-2);
+        text-align: right;
+      }
+      .rules h3 {
+        font-size: 22px;
+        font-weight: 600;
+      }
+      .rules p {
+        color: #cdbfa9;
+        margin: 6px 0 0;
+        font-size: 15.5px;
+      }
+
+      /* Setup */
+      .setup {
+        padding: 0 0 110px;
+      }
+      .steps {
+        list-style: none;
+        counter-reset: step;
+        padding: 0;
+        margin: 50px auto 0;
+        max-width: 860px;
+        display: grid;
+        gap: 30px;
+      }
+      .steps > li {
+        counter-increment: step;
+        position: relative;
+        padding-left: 76px;
+      }
+      .steps > li::before {
+        content: counter(step);
+        position: absolute;
+        left: 0;
+        top: -6px;
+        width: 54px;
+        height: 54px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        border: 2px solid var(--velvet);
+        color: var(--velvet);
+        font: 800 26px var(--display);
+      }
+      .steps h3 {
+        font-size: 26px;
+        font-weight: 600;
+        margin-bottom: 8px;
+      }
+      .steps p {
+        color: var(--ink-2);
+        margin: 0;
+      }
+      .booth {
+        margin-top: 12px;
+      }
+      .booth-tabs {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .booth-tabs button {
+        font: 600 14px var(--sans);
+        background: var(--paper-2);
+        color: var(--ink-2);
+        border: 1px solid var(--rule);
+        border-bottom: none;
+        border-radius: 12px 12px 0 0;
+        padding: 9px 16px;
+        cursor: pointer;
+      }
+      .booth-tabs button[aria-selected="true"] {
+        background: var(--night);
+        color: var(--on-night);
+        border-color: var(--night);
+      }
+      .booth-panel {
+        background: var(--night);
+        color: var(--on-night);
+        border-radius: 0 12px 12px 12px;
+        padding: 18px;
+      }
+      .booth-panel p {
+        color: #d8cab3;
+      }
+      .booth-panel a {
+        color: var(--brass-2);
+      }
+      .then {
+        margin: 14px 0 8px !important;
+        font-size: 14px;
+      }
+      .code {
+        position: relative;
+        background: #0b0706;
+        border-radius: 8px;
+        border: 1px solid #2c221d;
+      }
+      .code pre {
+        margin: 0;
+        padding: 14px 16px;
+        overflow-x: auto;
+        font: 400 13.5px/1.6 var(--mono);
+        color: #f4ecdd;
+      }
+      .code code {
+        font-size: inherit;
+      }
+      .copy {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        font: 500 11px var(--mono);
+        background: #2a201c;
+        color: #f4ecdd;
+        border: 1px solid #3d2f28;
+        border-radius: 5px;
+        padding: 4px 9px;
+        cursor: pointer;
+      }
+      .clients {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: center;
+        gap: 10px 22px;
+        margin: 60px 0 0;
+        font: 500 12px var(--mono);
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--ink-3);
+      }
+      .clients b {
+        font: 600 17px var(--display);
+        letter-spacing: 0;
+        text-transform: none;
+        color: var(--ink);
+      }
+
+      /* Footer: the credits roll */
+      .credits {
+        background: var(--night);
+        color: var(--on-night);
+        text-align: center;
+        padding-top: 70px;
+      }
+      .roll-title {
+        font: 800 italic 40px var(--display);
+        color: var(--brass-2);
+        margin: 0 0 30px;
+      }
+      .credits dl {
+        display: grid;
+        gap: 10px;
+        margin: 0 auto;
+        max-width: 560px;
+      }
+      .credits dl div {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+      }
+      .credits dt {
+        text-align: right;
+        font: 500 11.5px/1.9 var(--mono);
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: #a4937e;
+      }
+      .credits dd {
+        margin: 0;
+        text-align: left;
+        font-family: var(--display);
+        font-size: 17px;
+      }
+      .credits a {
+        color: var(--on-night);
+      }
+      .disclaimer {
+        font-size: 13px;
+        color: #a4937e;
+        margin: 40px auto 46px;
+        max-width: 560px;
+      }
+      .credits .perf {
+        background-color: #000;
+        background-image: linear-gradient(90deg, transparent 0 6px, #3a2d27 6px 20px, transparent 20px 28px);
+      }
+
+      @media (max-width: 960px) {
+        .hero-grid,
+        .scene {
+          grid-template-columns: 1fr;
+        }
+        .marquee {
+          transform: none;
+          max-width: 560px;
+        }
+        .tile {
+          width: min(calc((100vw - 120px) / 14.5), 30px);
+          height: min(calc((100vw - 120px) / 10.2), 42px);
+          font-size: min(calc((100vw - 120px) / 18), 24px);
+        }
+        .stubs {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        .rules {
+          grid-template-columns: 1fr;
+        }
+      }
+      @media (max-width: 640px) {
+        body {
+          font-size: 16px;
+        }
+        .hide-sm {
+          display: none;
+        }
+        .nav nav {
+          gap: 16px;
+        }
+        .hero {
+          padding: 44px 0 56px;
+        }
+        .stubs {
+          grid-template-columns: 1fr;
+        }
+        .wall {
+          grid-template-columns: repeat(3, 1fr);
+          gap: 10px;
+        }
+        .script {
+          padding: 28px 22px 22px 34px;
+        }
+        .dlg {
+          margin-inline: 4% !important;
+        }
+        .steps > li {
+          padding-left: 0;
+          padding-top: 64px;
+        }
+        .credits dl div {
+          grid-template-columns: 1fr;
+          gap: 0;
+        }
+        .credits dt,
+        .credits dd {
+          text-align: center;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+        .bulbs i,
+        .ticker-track {
+          animation: none !important;
+        }
+        .scene .stamp,
+        .scene .boxset,
+        .scene .script > * {
+          opacity: 1 !important;
+          animation: none !important;
+        }
+        .scene .poster:not(.xmas) {
+          opacity: 0.45;
+          filter: grayscale(0.85);
+        }
+        .replay {
+          display: none;
+        }
+      }
+    </style>
+  </body>
+</html>

@@ -1,0 +1,71 @@
+/* Starlight, dressed as the emby-mcp landing page: cinema-programme paper,
+   burgundy and brass in the light theme, a dark auditorium in the dark one. */
+:root {
+  --sl-font: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --sl-font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --em-display: "Fraunces", Georgia, "Times New Roman", serif;
+
+  /* Dark: the auditorium. */
+  --sl-color-accent-low: #3a1219;
+  --sl-color-accent: #e0a63c;
+  --sl-color-accent-high: #f6e2b3;
+  --sl-color-white: #f7efe0;
+  --sl-color-gray-1: #eadfcb;
+  --sl-color-gray-2: #c9bba3;
+  --sl-color-gray-3: #9c8d77;
+  --sl-color-gray-4: #5e5243;
+  --sl-color-gray-5: #3a2f27;
+  --sl-color-gray-6: #241b17;
+  --sl-color-black: #160f0d;
+}
+
+:root[data-theme="light"] {
+  /* Light: the printed programme. */
+  --sl-color-accent-low: #f3dcd8;
+  --sl-color-accent: #8e1f30;
+  --sl-color-accent-high: #4f0f1a;
+  --sl-color-white: #1d1714;
+  --sl-color-gray-1: #2c2420;
+  --sl-color-gray-2: #4a3f37;
+  --sl-color-gray-3: #76685a;
+  --sl-color-gray-4: #a8998a;
+  --sl-color-gray-5: #d9ccb8;
+  --sl-color-gray-6: #ece2d0;
+  --sl-color-gray-7: #f4ecdd;
+  --sl-color-black: #f8f2e6;
+}
+
+.site-title {
+  font-family: var(--em-display);
+  font-weight: 700;
+  font-size: 1.35rem;
+  letter-spacing: -0.01em;
+}
+
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3,
+h1#_top {
+  font-family: var(--em-display);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+/* Section headings get a thin rule, like a programme. */
+.sl-markdown-content h2 {
+  border-bottom: 1px solid var(--sl-color-gray-5);
+  padding-bottom: 0.3em;
+}
+
+/* The tool reference has wide argument tables; let them scroll. */
+.sl-markdown-content table {
+  display: block;
+  overflow-x: auto;
+}
+
+/* Sidebar badges in the brand colours. */
+.sl-badge.default {
+  background: var(--sl-color-accent);
+  border-color: var(--sl-color-accent);
+  color: var(--sl-color-black);
+}

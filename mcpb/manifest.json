@@ -1,0 +1,217 @@
+{
+  "manifest_version": "0.3",
+  "name": "emby-mcp",
+  "display_name": "Emby (emby-mcp)",
+  "version": "0.0.0-dev",
+  "description": "Search, tag and organise your Emby media library: films, series, collections, playlists and what's playing.",
+  "long_description": "An open-source MCP server for **Emby**, the personal media server. Ask about your library in plain English: what's unwatched and under two hours, which films have no plot or rating, what's playing in the living room. If you allow it, Claude can also tag films in bulk, build collections and playlists, fix metadata and mark things watched.\n\n- **Read-only by default.** Changes need *Allow changes*; deleting collections and playlists needs *Allow deletes* too, and media files are never deleted.\n- **Made for curation.** Tag hundreds of films in one go, rename or merge tags, lock fields so a metadata refresh doesn't undo your work, and preview any change with a dry run first.\n- **Private.** It talks only to your own Emby server, with an API key you create in the Emby dashboard.\n\nemby-mcp is an independent community project, not made, endorsed or supported by Emby LLC.",
+  "author": {
+    "name": "Matt Oddie",
+    "url": "https://github.com/mattoddie"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mattoddie/emby-mcp"
+  },
+  "homepage": "https://emby-mcp.mattoddie.dev",
+  "documentation": "https://emby-mcp.mattoddie.dev/docs/clients/#claude-desktop",
+  "support": "https://github.com/mattoddie/emby-mcp/issues",
+  "icon": "icon.png",
+  "server": {
+    "type": "binary",
+    "entry_point": "server/emby-mcp",
+    "mcp_config": {
+      "command": "${__dirname}/server/emby-mcp",
+      "args": [],
+      "env": {
+        "MCP_TRANSPORT": "stdio",
+        "EMBY_URL": "${user_config.url}",
+        "EMBY_API_KEY": "${user_config.api_key}",
+        "EMBY_USER": "${user_config.user}",
+        "EMBY_ALLOW_WRITES": "${user_config.allow_writes}",
+        "EMBY_ALLOW_DELETES": "${user_config.allow_deletes}",
+        "EMBY_TOOLSETS": "${user_config.toolsets}",
+        "EMBY_TLS_FINGERPRINT": "${user_config.tls_fingerprint}",
+        "EMBY_AUDIT_LOG": "${user_config.audit_log}"
+      },
+      "platform_overrides": {
+        "win32": {
+          "command": "${__dirname}/server/emby-mcp.exe"
+        }
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "emby_get_collection",
+      "description": "Show a collection and everything in it, in release order, with each item's ID, year, rating and the user's watched state."
+    },
+    {
+      "name": "emby_get_item",
+      "description": "Everything about one item: title, original title, year and premiere date, ratings, runtime, plot, tagline, genres, tags, studios, the collections it's in, directors, writers and cast, provider IDs (TMDb, IMDb, TVDb), date added, file path, media (resolution, HDR, codecs, audio and subtitle tracks, size), locked metadata fields, and the user's watched state and progress. Give the ID, or a title that matches one item."
+    },
+    {
+      "name": "emby_get_playlist",
+      "description": "Show a playlist's items in order, with each one's ID, runtime and watched state, and the total running time."
+    },
+    {
+      "name": "emby_get_server_info",
+      "description": "A first look at the Emby server: name, version, whether an update or restart is pending, the user the tools act as, each library with its type, and how many films, series, episodes, collections and other items there are. Also says whether changes are allowed."
+    },
+    {
+      "name": "emby_get_similar",
+      "description": "Items Emby considers similar to one item (by genre, people and studio), with the user's watched state: good for \"something like X\" recommendations or for finding candidates for a collection."
+    },
+    {
+      "name": "emby_list_activity",
+      "description": "The server's activity log, newest first: playback started and stopped, sign-ins, new items added, scheduled task results, errors and warnings. Filter by date, severity or text."
+    },
+    {
+      "name": "emby_list_collections",
+      "description": "List the collections (Emby box sets, such as \"Star Wars Collection\" or your own \"Christmas Classics\"), with how many items each holds. Filter by name."
+    },
+    {
+      "name": "emby_list_latest",
+      "description": "The most recently added items, newest first, as on Emby's home screen: optionally only some types or one library. New episodes of a series are grouped under the series unless group is false."
+    },
+    {
+      "name": "emby_list_libraries",
+      "description": "List the Emby libraries: name, ID (use it as library or parent_id), content type (movies, tvshows, music...), the folders on disk, and the settings that matter for curation: metadata language and country, whether Emby imports collections (such as TMDb film series) automatically and the minimum size for one, whether metadata is saved next to the media (NFO files), and the automatic refresh interval."
+    },
+    {
+      "name": "emby_list_playlists",
+      "description": "List the user's playlists (video and music) with how many items each holds."
+    },
+    {
+      "name": "emby_list_resume",
+      "description": "What the user has started but not finished (Emby's \"Continue watching\"), most recent first, with how far through each one they are."
+    },
+    {
+      "name": "emby_list_scheduled_tasks",
+      "description": "The server's scheduled tasks (library scan, metadata refresh, chapter images, backups from plugins...): each one's state and progress if running, and when it last ran and how that went. To start one, use its key or name."
+    },
+    {
+      "name": "emby_list_sessions",
+      "description": "Who's using Emby right now: each active session's user, app and device, and what's playing (title, position, paused, and whether it's direct playing or transcoding, with the reason). Idle sessions are left out unless include_idle is true."
+    },
+    {
+      "name": "emby_list_users",
+      "description": "List the Emby users: name, ID, whether each is an administrator, disabled or hidden, when they last signed in and were last active, and their parental control limit. Shows which one the tools use by default. Never shows passwords."
+    },
+    {
+      "name": "emby_list_values",
+      "description": "List the values in use in the library for one kind of metadata: tags, genres, studios, parental ratings or years. Narrow it to item types or a library, or filter the names. with_counts adds how many items have each value (it reads every matching item, so it's slower on big libraries), sorted most-used first. Use it before tagging to reuse existing tag names instead of inventing near-duplicates."
+    },
+    {
+      "name": "emby_search_items",
+      "description": "Find items in the Emby library: films, series, episodes, collections, music and more. Combine any filters: text, type, library, genres, tags (or untagged), years, parental rating, community and critic ratings, person, studio, watched or favourite (for the user), in progress, missing metadata (such as no overview or no TMDb ID), or a list of IDs. Returns compact items with IDs, year, rating, runtime, genres, tags and watched state, sorted and paged (total, offset, next_offset). include_overview adds a short plot summary, for deciding tags or recommending something."
+    }
+  ],
+  "tools_generated": true,
+  "prompts": [
+    {
+      "name": "library_report",
+      "description": "A health check of the Emby library: what's in it, how well it's tagged and organised, gaps in the metadata, and suggestions.",
+      "arguments": [
+        "library"
+      ],
+      "text": "Give me a report on the whole library in Emby.\n1. emby_get_server_info for the libraries and counts.\n2. emby_list_values kind tags with_counts: true (types [\"Movie\"]), and the same for genres, to see how the library is tagged.\n3. emby_search_items types [\"Movie\"], untagged: true, limit 1: how many films have no tags.\n4. Gaps: emby_search_items with missing [\"overview\"], then [\"tmdb_id\"], then [\"official_rating\"] (limit 10 each), and the same for types [\"Series\"].\n5. emby_list_collections: how many collections, and which are tiny (one or two items).\nReport: a short summary with counts; the tag vocabulary (most used, rarely used, and near-duplicates such as \"Sci-Fi\" and \"Science Fiction\" that could be merged); how much is untagged; the metadata gaps with examples; and three to five concrete next steps. Don't change anything."
+    },
+    {
+      "name": "suggest_collections",
+      "description": "Look through the library for sets worth making: film series, directors and themes that aren't grouped yet.",
+      "arguments": [
+        "library"
+      ],
+      "text": "Suggest new collections for my Emby films.\n1. emby_list_collections: what already exists.\n2. emby_search_items types [\"Movie\"], sorted by name, limit 500 (page with offset if there are more): read through the titles and years.\n3. Look for film series and franchises that aren't a collection yet (or are missing entries), directors with four or more films, and strong themes or occasions (Christmas, Halloween, Pixar, Bond...). Check emby_list_values kind tags with_counts: true for themes already tagged.\n4. Propose up to ten collections in a table: name, why, how many films, and which ones.\nDon't change anything: creating collections needs EMBY_ALLOW_WRITES on this server."
+    },
+    {
+      "name": "movie_night",
+      "description": "Recommend a few unwatched films from the library for tonight, to suit a mood, the time you have and who's watching.",
+      "arguments": [
+        "mood",
+        "minutes",
+        "audience",
+        "user"
+      ],
+      "text": "Pick something for me to watch tonight from my Emby library.\nMood: anything good. Time: no limit. Audience: adults.\n1. emby_list_resume: is there something I'm part-way through that fits?\n2. emby_search_items types [\"Movie\"], played: false, include_overview: true, with filters that fit: genres or tags for the mood, max_rating for the audience, and sort_by community_rating (descending) or random. If I named a film I like, use emby_get_similar on it. Leave out anything longer than the time I have.\n3. Recommend three, each with its year, runtime, rating and one line on why it suits tonight, and say which you'd pick. Don't change anything."
+    },
+    {
+      "name": "tidy_metadata",
+      "description": "Find items with missing or wrong metadata (no plot, no TMDb match, no rating) and fix them by refreshing or editing, with your approval.",
+      "arguments": [
+        "library"
+      ],
+      "text": "Help me tidy up the metadata in my Emby library.\n1. emby_search_items types [\"Movie\",\"Series\"] with missing [\"tmdb_id\"], then missing [\"overview\"], then missing [\"official_rating\"] (limit 50 each). Items with no TMDb or TVDb ID usually weren't matched at all, often because of the folder or file name.\n2. For a few examples, emby_get_item to see the path and what's there.\n3. Group the problems: unmatched items (with their file paths and the likely correct title and year), items with partial metadata, and anything else odd (such as wrong years or titles).\n4. Suggest fixes I can make myself in Emby or on disk. Don't change anything: edits need EMBY_ALLOW_WRITES on this server."
+    }
+  ],
+  "keywords": [
+    "emby",
+    "media server",
+    "movies",
+    "tv",
+    "collections",
+    "tags",
+    "home theater",
+    "plex alternative"
+  ],
+  "license": "MIT",
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ]
+  },
+  "user_config": {
+    "url": {
+      "type": "string",
+      "title": "Emby server address",
+      "description": "The address you open Emby at, with the port, such as http://emby.lan:8096 or https://emby.example.com.",
+      "required": true
+    },
+    "api_key": {
+      "type": "string",
+      "title": "Emby API key",
+      "description": "Create one in the Emby dashboard under Advanced > API Keys (Settings > API Keys in newer versions): press New API Key and name it Claude.",
+      "sensitive": true,
+      "required": true
+    },
+    "user": {
+      "type": "string",
+      "title": "Emby user",
+      "description": "Optional: whose watched state, favourites and parental limits to use, by name. Empty means the first administrator.",
+      "default": ""
+    },
+    "allow_writes": {
+      "type": "boolean",
+      "title": "Allow changes",
+      "description": "Let Claude change the library: tags, metadata, collections, playlists, watched state and favourites, refreshes and scans. Off means read-only.",
+      "default": false
+    },
+    "allow_deletes": {
+      "type": "boolean",
+      "title": "Allow deletes",
+      "description": "Also let Claude delete collections and playlists (never media files). Needs Allow changes.",
+      "default": false
+    },
+    "toolsets": {
+      "type": "string",
+      "title": "Toolsets",
+      "description": "Optional comma-separated list to expose fewer tools, e.g. library,metadata,collections. Empty means all except raw (the raw API tool), which you add by name, e.g. all,raw.",
+      "default": ""
+    },
+    "tls_fingerprint": {
+      "type": "string",
+      "title": "Certificate fingerprint",
+      "description": "Optional, for an https address with a self-signed certificate: its SHA-256 fingerprint (AA:BB:...). Leave empty for http or a normal certificate.",
+      "default": ""
+    },
+    "audit_log": {
+      "type": "string",
+      "title": "Audit log file",
+      "description": "Optional full path to a file, e.g. /Users/you/emby-mcp-audit.jsonl, where every change Claude makes is appended as a JSON line. Its folder must exist. stderr writes the lines to Claude Desktop's MCP log instead. Off when left empty.",
+      "default": ""
+    }
+  }
+}

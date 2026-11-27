@@ -1,0 +1,128 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.mattoddie/emby-mcp",
+  "title": "Emby",
+  "description": "Search, tag and organise an Emby media library: films, series, collections and playlists",
+  "repository": {
+    "url": "https://github.com/mattoddie/emby-mcp",
+    "source": "github"
+  },
+  "websiteUrl": "https://emby-mcp.mattoddie.dev",
+  "version": "0.0.0-dev",
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/mattoddie/emby-mcp:0.0.0-dev",
+      "runtimeHint": "docker",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "MCP_TRANSPORT",
+          "description": "Serve MCP over stdio (the image defaults to HTTP).",
+          "value": "stdio"
+        },
+        {
+          "name": "EMBY_URL",
+          "description": "Your Emby server's address with the port, such as http://emby.lan:8096.",
+          "isRequired": true
+        },
+        {
+          "name": "EMBY_API_KEY",
+          "description": "An Emby API key, from the Emby dashboard under API Keys.",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "EMBY_USER",
+          "description": "Optional Emby user whose watched state and favourites to use. Empty means the first administrator.",
+          "placeholder": "Sam"
+        },
+        {
+          "name": "EMBY_ALLOW_WRITES",
+          "description": "Allow changes: tags, metadata, collections, playlists, watched state, refreshes. Off means read-only.",
+          "format": "boolean",
+          "default": "false",
+          "choices": [
+            "true",
+            "false"
+          ]
+        },
+        {
+          "name": "EMBY_ALLOW_DELETES",
+          "description": "Also allow deleting collections and playlists (never media files). Needs EMBY_ALLOW_WRITES.",
+          "format": "boolean",
+          "default": "false",
+          "choices": [
+            "true",
+            "false"
+          ]
+        },
+        {
+          "name": "EMBY_TOOLSETS",
+          "description": "Optional comma-separated toolsets to expose fewer tools, e.g. library,metadata,collections. Empty means all but raw.",
+          "placeholder": "library,metadata,collections"
+        },
+        {
+          "name": "EMBY_TLS_FINGERPRINT",
+          "description": "Optional SHA-256 fingerprint of a self-signed https certificate.",
+          "placeholder": "AA:BB:..."
+        },
+        {
+          "name": "EMBY_AUDIT_LOG",
+          "description": "Optional audit log of every change: stderr, or a file path inside the container.",
+          "placeholder": "stderr"
+        }
+      ]
+    },
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/mattoddie/emby-mcp/releases/download/v0.0.0-dev/emby-mcp-0.0.0-dev-darwin-arm64.mcpb",
+      "fileSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "transport": {
+        "type": "stdio"
+      }
+    },
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/mattoddie/emby-mcp/releases/download/v0.0.0-dev/emby-mcp-0.0.0-dev-darwin-amd64.mcpb",
+      "fileSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "transport": {
+        "type": "stdio"
+      }
+    },
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/mattoddie/emby-mcp/releases/download/v0.0.0-dev/emby-mcp-0.0.0-dev-windows-amd64.mcpb",
+      "fileSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "transport": {
+        "type": "stdio"
+      }
+    },
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/mattoddie/emby-mcp/releases/download/v0.0.0-dev/emby-mcp-0.0.0-dev-windows-arm64.mcpb",
+      "fileSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "transport": {
+        "type": "stdio"
+      }
+    },
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/mattoddie/emby-mcp/releases/download/v0.0.0-dev/emby-mcp-0.0.0-dev-linux-amd64.mcpb",
+      "fileSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "transport": {
+        "type": "stdio"
+      }
+    },
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/mattoddie/emby-mcp/releases/download/v0.0.0-dev/emby-mcp-0.0.0-dev-linux-arm64.mcpb",
+      "fileSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
