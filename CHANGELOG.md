@@ -6,6 +6,8 @@ For emby-mcp, the "public API" is the set of tool names, their arguments, the pr
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-27
+
 ### Fixed
 
 - Tools that take item IDs now find collections and playlists too. Emby leaves collections out of an ID lookup unless the request names them, so `emby_add_tags` and `emby_remove_tags` reported a collection as not found, and the collection, playlist and watched-state tools couldn't use one.
@@ -32,5 +34,6 @@ First release, tested against Emby Server 4.10.2. emby-mcp has 34 tools in 7 too
 - Multi-arch distroless Docker image (`linux/amd64`, `linux/arm64`) that keeps no state, published to GHCR with SBOM and provenance attestation, Claude Desktop extension bundles (`.mcpb`), release binaries for macOS, Linux and Windows, a Homebrew formula (`mattoddie/tap/emby-mcp`) and a listing in the MCP Registry.
 - An in-memory mock Emby for tests, and documentation including a tool reference generated from the code.
 
-[Unreleased]: https://github.com/mattoddie/emby-mcp/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/mattoddie/emby-mcp/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/mattoddie/emby-mcp/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/mattoddie/emby-mcp/releases/tag/v0.1.0
