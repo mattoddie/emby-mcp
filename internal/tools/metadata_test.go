@@ -193,3 +193,16 @@ func TestRefresh(t *testing.T) {
 		t.Errorf("partial failure: %v", out)
 	}
 }
+
+// Emby leaves collections out of an Ids query unless the request names BoxSet,
+// so tagging one used to report it as not found.
+func TestAddTagsToCollection(t *testing.T) {
+	h := newHarness(t, writable())
+	out := h.ok("emby_add_tags", map[string]any{"item_ids": []string{embytest.BoxSetID, embytest.HeatID}, "tags": []string{"kids"}})
+	if out["changed"] != float64(2) || out["not_found"] != nil {
+		t.Errorf("tagging a collection and a film: %v", out)
+	}
+	if got := h.mock.TagNames(embytest.BoxSetID); strings.Join(got, ",") != "kids" {
+		t.Errorf("collection tags: %v", got)
+	}
+}

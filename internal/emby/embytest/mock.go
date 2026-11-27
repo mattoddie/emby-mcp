@@ -549,6 +549,11 @@ func (s *Server) query(uid string, q map[string][]string) []map[string]any {
 		if len(types) > 0 && !types[typ] || exclude[typ] {
 			continue
 		}
+		// Like Emby, an Ids query leaves out collections unless
+		// IncludeItemTypes names BoxSet.
+		if len(ids) > 0 && typ == "BoxSet" && !types["BoxSet"] {
+			continue
+		}
 		if term != "" && !strings.Contains(strings.ToLower(it["Name"].(string)), term) {
 			continue
 		}

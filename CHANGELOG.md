@@ -6,6 +6,10 @@ For emby-mcp, the "public API" is the set of tool names, their arguments, the pr
 
 ## [Unreleased]
 
+### Fixed
+
+- Tools that take item IDs now find collections and playlists too. Emby leaves collections out of an ID lookup unless the request names them, so `emby_add_tags` and `emby_remove_tags` reported a collection as not found, and the collection, playlist and watched-state tools couldn't use one.
+
 ## [0.1.0] - 2026-11-27
 
 First release, tested against Emby Server 4.10.2. emby-mcp has 34 tools in 7 toolsets (17 read, 15 write and 2 delete) and 6 prompts.
