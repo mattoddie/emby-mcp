@@ -379,13 +379,13 @@ func changeTags(ctx context.Context, c *Context, rawIDs, rawTags []string, addin
 		return nil, err
 	}
 	type job struct {
+		i        int
 		id, name string
 		tags     []string
 		lock     bool
 		current  []string
 	}
 	var jobs []job
-	results := map[string]*itemResult{}
 	var missing []string
 	unchanged := 0
 	for _, id := range ids {
@@ -414,15 +414,17 @@ func changeTags(ctx context.Context, c *Context, rawIDs, rawTags []string, addin
 			unchanged++
 			continue
 		}
-		jobs = append(jobs, job{id: id, name: emby.Str(it, "Name"), tags: todo, lock: lock, current: have})
+		jobs = append(jobs, job{i: len(jobs), id: id, name: emby.Str(it, "Name"), tags: todo, lock: lock, current: have})
 	}
 	verb, path := "added", "/Tags/Add"
 	if !adding {
 		verb, path = "removed", "/Tags/Delete"
 	}
+	// One result per job, each written only by the worker handling that job.
+	results := make([]itemResult, len(jobs))
 	errs := forEach(ctx, jobs, func(j job) error {
-		r := &itemResult{ID: j.id, Name: j.name}
-		results[j.id] = r
+		r := &results[j.i]
+		r.ID, r.Name = j.id, j.name
 		if len(j.tags) > 0 {
 			pairs := make([]Obj, len(j.tags))
 			for i, t := range j.tags {
@@ -457,10 +459,8 @@ func changeTags(ctx context.Context, c *Context, rawIDs, rawTags []string, addin
 	var changed []itemResult
 	failed := 0
 	for i, j := range jobs {
-		r := results[j.id]
-		if r == nil {
-			r = &itemResult{ID: j.id, Name: j.name}
-		}
+		r := &results[i]
+		r.ID, r.Name = j.id, j.name
 		if errs[i] != nil {
 			r.Error = errs[i].Error()
 			failed++
