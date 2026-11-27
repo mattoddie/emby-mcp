@@ -505,6 +505,27 @@ func (c *Client) ItemsByID(ctx context.Context, userID string, ids []string, fie
 			out[Str(it, "Id")] = it
 		}
 	}
+	// Emby leaves collections out of an Ids query unless IncludeItemTypes
+	// names them, so look for any IDs not yet found among collections and
+	// playlists. Naming every type in the first query instead would leave out
+	// types not on the list.
+	var missing []string
+	for _, id := range ids {
+		if _, ok := out[id]; !ok {
+			missing = append(missing, id)
+		}
+	}
+	for start := 0; start < len(missing); start += 100 {
+		end := min(start+100, len(missing))
+		q := url.Values{"Ids": {strings.Join(missing[start:end], ",")}, "IncludeItemTypes": {"BoxSet,Playlist"}, "Fields": {fields}, "EnableImages": {"false"}}
+		items, _, err := c.Items(ctx, userID, q)
+		if err != nil {
+			return nil, err
+		}
+		for _, it := range items {
+			out[Str(it, "Id")] = it
+		}
+	}
 	return out, nil
 }
 
